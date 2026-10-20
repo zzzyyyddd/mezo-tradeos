@@ -1,0 +1,42 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+deployments/demo-wallets.json
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+artifacts/
+cache/
+coverage/
+dist/
+build/
+.next/
+**/.next/
+out/
+**/out/
+.vercel/
+**/.vercel/
+*.tsbuildinfo
+
+# Temporary files
+*.bak
+*.before-status-fix
+*.log
+.DS_Store
+
+# Nested Git metadata backup
+web/.git-backup/
+
+# Historical code backups
+*.backup
+*.before-*
+*.pre-*
