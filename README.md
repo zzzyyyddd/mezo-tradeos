@@ -23,7 +23,7 @@ Milestone-based transactions are difficult when buyers and sellers do not fully 
 
 ## User Flow
 
-```text
+```
 Buyer creates trade and specifies milestones
                   ↓
 Buyer approves MUSD and funds escrow
@@ -40,7 +40,6 @@ Buyer releases milestone payment in MUSD
                   ↓
 Next milestone, or Completed
 ```
-
 Disputes, resolver decisions, and eligible refunds are alternative contract-governed paths.
 
 ## Architecture
@@ -138,7 +137,6 @@ Requirements: Node.js, npm, a Mezo Testnet-compatible wallet, and relevant testn
 npm install
 npx hardhat test
 ```
-
 ### Frontend
 
 ```bash
@@ -146,14 +144,13 @@ cd web
 npm install
 npm run dev
 ```
-
 Open `http://localhost:3000`.
 
 The evidence upload/lookup API routes require server-side environment variables for Pinata and Upstash Redis. Keep `PINATA_JWT`, `UPSTASH_REDIS_REST_URL`, and `UPSTASH_REDIS_REST_TOKEN` private; never prefix secrets with `NEXT_PUBLIC_` or commit them to Git.
 
 ## Repository Layout
 
-```text
+```
 contracts/       TradeEscrow and test token contracts
 test/            Hardhat contract tests
 scripts/         Deployment and diagnostic utilities
@@ -162,7 +159,6 @@ web/src/app/     Next.js app and evidence API routes
 web/src/lib/     Contract, network, and evidence utilities
 web/src/components/  UI components
 ```
-
 ## Why Mezo?
 
 Mezo TradeOS explores **MUSD as a settlement asset for real milestone-based agreements**. Rather than demonstrating a token transfer alone, it shows a complete escrow lifecycle with verifiable deliverables, dispute paths, and transparent settlement history.
