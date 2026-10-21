@@ -487,6 +487,26 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#080d19] text-slate-100">
+      {message && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed right-4 top-4 z-50 w-[calc(100%-2rem)] max-w-sm rounded-xl border border-cyan-400/30 bg-[#101b2e] p-4 text-sm text-slate-100 shadow-2xl"
+        >
+          <div className="flex items-start gap-3">
+            <span className="min-w-0 flex-1 break-words">{message}</span>
+            <button
+              type="button"
+              onClick={() => setMessage("")}
+              aria-label="Dismiss notification"
+              className="text-slate-400 hover:text-white"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto max-w-6xl px-5 py-8">
         <header className="mb-10 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
           <div>
@@ -677,7 +697,33 @@ export default function Home() {
               />
             </label>
 
-            {createdTradeId && (
+        {(message || txHash) && (
+          <div className="mt-6 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4 text-sm">
+            <div className="flex items-center gap-2">
+              {confirming ? (
+                <RefreshCw className="animate-spin text-cyan-400" size={16} />
+              ) : confirmed ? (
+                <CheckCircle2 className="text-emerald-400" size={16} />
+              ) : (
+                <ShieldCheck className="text-cyan-400" size={16} />
+              )}
+              <span>{message}</span>
+            </div>
+            {txHash && (
+              <a
+                href={`${explorer}/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 inline-flex items-center gap-2 text-cyan-300 underline"
+              >
+                View transaction on explorer
+                <ExternalLink size={14} />
+              </a>
+            )}
+          </div>
+        )}
+
+            {createdTradeId && tradeId === createdTradeId && tradeStatus === 0 && tradeData && (
               <div className="mb-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
                 <p className="text-sm font-semibold text-emerald-300">
                   Trade #{createdTradeId} Created Successfully
@@ -949,31 +995,7 @@ export default function Home() {
           </section>
         </div>
 
-        {(message || txHash) && (
-          <div className="mt-6 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4 text-sm">
-            <div className="flex items-center gap-2">
-              {confirming ? (
-                <RefreshCw className="animate-spin text-cyan-400" size={16} />
-              ) : confirmed ? (
-                <CheckCircle2 className="text-emerald-400" size={16} />
-              ) : (
-                <ShieldCheck className="text-cyan-400" size={16} />
-              )}
-              <span>{message}</span>
-            </div>
-            {txHash && (
-              <a
-                href={`${explorer}/tx/${txHash}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-2 text-cyan-300 underline"
-              >
-                View transaction on explorer
-                <ExternalLink size={14} />
-              </a>
-            )}
-          </div>
-        )}
+
 
         <footer className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-slate-500">
           <span>Mezo TradeOS · Milestone settlement infrastructure</span>
