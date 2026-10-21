@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { Redis } from "@upstash/redis";
 import { keccak256, stringToHex } from "viem";
 
 import {
@@ -191,6 +192,25 @@ export async function POST(request: NextRequest) {
     ) {
       throw new Error("Pinata returned an invalid CID");
     }
+
+    const redis = Redis.fromEnv();
+
+    const registryKey =
+      `mezo:evidence:cid:${verified.tradeId}:${verified.milestone}`;
+
+    const saved = await redis.set(registryKey, cid, { nx: true });
+
+    if (saved !== "OK") {
+      const existingCid = await redis.get<string>(registryKey);
+
+      if (existingCid !== cid) {
+        throw new Error(
+          "Evidence CID already registered for this milestone"
+        );
+      }
+    }
+
+    console.log("[Evidence] CID registered successfully");
 
     return NextResponse.json({
       cid,

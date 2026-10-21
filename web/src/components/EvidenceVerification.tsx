@@ -48,6 +48,54 @@ export default function EvidenceVerification({ tradeId }: Props) {
     query: { enabled: false },
   });
 
+  async function findEvidence() {
+    const version = ++verificationVersion.current;
+    setResult("");
+    setLoading(true);
+
+    try {
+      if (!validTrade || !validMilestone) {
+        throw new Error("Invalid trade ID or milestone");
+      }
+
+      const params = new URLSearchParams({
+        tradeId,
+        milestone,
+      });
+
+      const response = await fetch(
+        `/api/evidence/lookup?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Evidence lookup failed");
+      }
+
+      if (version !== verificationVersion.current) return;
+
+      if (!data.cid) {
+        setResult("NO CID FOUND — Evidence is not registered yet");
+        return;
+      }
+
+      setCid(data.cid);
+      setResult("CID FOUND — Click Verify Evidence to check against Mezo");
+    } catch (error) {
+      if (version === verificationVersion.current) {
+        setResult(
+          error instanceof Error ? error.message : "Evidence lookup failed"
+        );
+      }
+    } finally {
+      if (version === verificationVersion.current) {
+        setLoading(false);
+      }
+    }
+  }
+
   async function verify() {
     setResult("");
     setLoading(true);
@@ -167,6 +215,14 @@ export default function EvidenceVerification({ tradeId }: Props) {
           className="mt-2 w-full rounded-xl border border-white/10 bg-[#080d19] p-3"
         />
       </label>
+
+      <button
+        onClick={findEvidence}
+        disabled={loading || !validTrade || !validMilestone}
+        className="mt-4 w-full rounded-xl border border-cyan-400/40 p-3 font-semibold text-cyan-200 disabled:opacity-40"
+      >
+        {loading ? "Loading..." : "Find Evidence CID"}
+      </button>
 
       <button
         onClick={verify}
