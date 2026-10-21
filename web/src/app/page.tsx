@@ -1,5 +1,16 @@
 "use client";
 
+import {
+  evidenceAuthMessage,
+  type EvidenceAuthPayload,
+} from "@/lib/evidenceAuth";
+import {
+  serializeEvidence,
+  hashEvidence,
+  type EvidenceDocument,
+} from "@/lib/evidenceContent";
+
+
 import { useEffect, useState } from "react";
 import {
   useAccount,
@@ -8,6 +19,7 @@ import {
   useSwitchChain,
   useReadContract,
   useWriteContract,
+  useSignMessage,
   useWaitForTransactionReceipt,
 } from "wagmi";
 import {
@@ -16,6 +28,7 @@ import {
   formatUnits,
   keccak256,
   stringToHex,
+  decodeEventLog,
 } from "viem";
 import {
   Wallet,
@@ -34,6 +47,8 @@ import {
   musdAbi,
 } from "@/lib/mezo";
 import escrowAbi from "@/lib/tradeEscrowAbi.json";
+import EvidenceVerification from "@/components/EvidenceVerification";
+import { verifyIpfsEvidence } from "@/lib/verifyIpfsEvidence";
 
 const explorer = "https://explorer.test.mezo.org";
 
@@ -65,13 +80,20 @@ export default function Home() {
   const { switchChain } = useSwitchChain();
 
   const { writeContractAsync, isPending: writing } = useWriteContract();
+  const { signMessageAsync } = useSignMessage();
 
   const [seller, setSeller] = useState("");
   const [resolver, setResolver] = useState("");
   const [amounts, setAmounts] = useState("0.4, 0.6");
   const [deadlineDays, setDeadlineDays] = useState("7");
-  const [tradeId, setTradeId] = useState("0");
-  const [evidence, setEvidence] = useState("");
+  const [tradeId, setTradeId] = useState("");
+  const [pendingAction, setPendingAction] = useState("");
+  const [createdTradeId, setCreatedTradeId] = useState<string | null>(null);
+
+  const [evidenceCid, setEvidenceCid] = useState("");
+  const [evidenceDescription, setEvidenceDescription] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+
   const [sellerAward, setSellerAward] = useState("0");
   const [currentTime, setCurrentTime] = useState<number | null>(null);
 
@@ -84,7 +106,9 @@ export default function Home() {
 
     const interval = setInterval(updateTime, 30000);
 
-    return () => clearInterval(interval);
+  
+
+  return () => clearInterval(interval);
   }, []);
   const [message, setMessage] = useState("");
   const [txHash, setTxHash] = useState<`0x${string}` | undefined>();
@@ -168,8 +192,60 @@ export default function Home() {
     query: { enabled: correctChain },
   });
 
-  const { isLoading: confirming, isSuccess: confirmed } =
-    useWaitForTransactionReceipt({ hash: txHash });
+  const {
+    data: transactionReceipt,
+    isLoading: confirming,
+    isSuccess: confirmed,
+  } = useWaitForTransactionReceipt({ hash: txHash });
+
+  useEffect(() => {
+    if (
+      pendingAction !== "Create Trade" ||
+      !transactionReceipt ||
+      transactionReceipt.status !== "success"
+    ) {
+      return;
+    }
+
+    for (const log of transactionReceipt.logs) {
+      if (
+        log.address.toLowerCase() !==
+        TRADE_ESCROW_ADDRESS.toLowerCase()
+      ) {
+        continue;
+      }
+
+      try {
+        const decoded = decodeEventLog({
+          abi: escrowAbi,
+          data: log.data,
+          topics: log.topics,
+          eventName: "TradeCreated",
+        });
+
+        if (
+          decoded.eventName !== "TradeCreated" ||
+          !decoded.args ||
+          Array.isArray(decoded.args) ||
+          !("tradeId" in decoded.args)
+        ) {
+          continue;
+        }
+
+        const id = String(
+          (decoded.args as { tradeId: bigint }).tradeId
+        );
+
+        setCreatedTradeId(id);
+        setTradeId(id);
+        setMessage(`Trade #${id} created successfully. Share this ID with your seller.`);
+        setPendingAction("");
+        break;
+      } catch {
+        // Ignore unrelated contract events.
+      }
+    }
+  }, [transactionReceipt, pendingAction]);
 
   useEffect(() => {
     if (!confirmed) return;
@@ -200,6 +276,7 @@ export default function Home() {
       }
 
       const hash = await action();
+      setPendingAction(label);
       setTxHash(hash);
       setMessage(`${label}: transaksi dikirim`);
     } catch (error) {
@@ -212,6 +289,7 @@ export default function Home() {
   }
 
   function createTrade() {
+    setCreatedTradeId(null);
     void submit("Create Trade", async () => {
       if (!isAddress(seller) || !isAddress(resolver)) {
         throw new Error("Alamat seller atau resolver tidak valid");
@@ -332,6 +410,80 @@ export default function Home() {
 
   const canResolve =
     correctChain && isResolver && tradeStatus === 2;
+
+  async function uploadEvidence() {
+    if (!address || !canSubmit) {
+      setMessage("Connect the Seller wallet for an active milestone.");
+      return;
+    }
+
+    setUploadingEvidence(true);
+
+    try {
+      const document: EvidenceDocument = {
+        app: "Mezo TradeOS",
+        version: 1,
+        tradeId,
+        milestone: currentMilestone.toString(),
+        description: evidenceDescription,
+      };
+
+      const canonical = serializeEvidence(document);
+      const evidenceHash = hashEvidence(canonical);
+
+      const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+      const nonce = Array.from(nonceBytes)
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+
+      const authorization: EvidenceAuthPayload = {
+        domain: window.location.host,
+        chainId: mezoTestnet.id,
+        contract: TRADE_ESCROW_ADDRESS,
+        tradeId,
+        milestone: currentMilestone.toString(),
+        seller: address,
+        evidenceHash,
+        nonce,
+        expiresAt: Math.floor(Date.now() / 1000) + 300,
+      };
+
+      setMessage("Sign the evidence upload authorization in your wallet...");
+
+      const signature = await signMessageAsync({
+        message: evidenceAuthMessage(authorization),
+      });
+
+      setMessage("Uploading verified evidence to IPFS...");
+
+      const response = await fetch("/api/evidence/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          document,
+          authorization,
+          signature,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Evidence upload failed");
+      }
+
+      setEvidenceCid(result.cid);
+      setMessage(
+        `Evidence uploaded successfully. CID: ${result.cid}. Submit Evidence to record its hash on Mezo.`
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Evidence upload failed"
+      );
+    } finally {
+      setUploadingEvidence(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#080d19] text-slate-100">
@@ -525,6 +677,31 @@ export default function Home() {
               />
             </label>
 
+            {createdTradeId && (
+              <div className="mb-5 rounded-xl border border-emerald-400/30 bg-emerald-400/10 p-4">
+                <p className="text-sm font-semibold text-emerald-300">
+                  Trade #{createdTradeId} Created Successfully
+                </p>
+                <p className="mt-1 text-xs text-slate-300">
+                  Share this Trade ID with your seller.
+                </p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(createdTradeId);
+                      setMessage(`Trade ID ${createdTradeId} copied.`);
+                    } catch {
+                      setMessage(`Copy Trade ID manually: ${createdTradeId}`);
+                    }
+                  }}
+                  className="mt-3 rounded-lg border border-emerald-400/30 px-4 py-2 text-sm font-semibold text-emerald-200"
+                >
+                  Copy Trade ID: {createdTradeId}
+                </button>
+              </div>
+            )}
+
             {tradeData ? (
               <div className="mb-5 space-y-3 rounded-xl border border-white/10 bg-[#080d19] p-4 text-sm">
                 <div className="flex justify-between">
@@ -572,10 +749,12 @@ export default function Home() {
               </div>
             ) : (
               <div className="mb-5 rounded-xl border border-dashed border-white/10 p-5 text-center text-sm text-slate-400">
-                Enter an existing trade ID to inspect it.
+                Enter a Trade ID to view and manage an escrow.
               </div>
             )}
 
+            {tradeData && (
+              <div className="space-y-3">
             <div className="grid gap-3 sm:grid-cols-2">
               <button
                 disabled={!canFund || writing}
@@ -598,32 +777,79 @@ export default function Home() {
               </button>
             </div>
 
+            <EvidenceVerification tradeId={tradeId} />
+
+            <div className="mt-5 rounded-xl border border-cyan-400/20 bg-cyan-400/5 p-4">
+              <h3 className="text-sm font-semibold text-cyan-300">
+                Upload Milestone Evidence
+              </h3>
+              <p className="mt-1 text-xs text-slate-400">
+                Describe the completed work, sign with the Seller wallet,
+                and upload directly to IPFS.
+              </p>
+
+              <textarea
+                value={evidenceDescription}
+                onChange={(e) => setEvidenceDescription(e.target.value)}
+                placeholder="Describe the delivered work and supporting evidence..."
+                rows={4}
+                maxLength={2000}
+                className="mt-3 w-full rounded-xl border border-white/10 bg-[#080d19] p-3 text-sm outline-none focus:border-cyan-400"
+              />
+
+              <button
+                disabled={
+                  !canSubmit ||
+                  writing ||
+                  uploadingEvidence ||
+                  evidenceDescription.trim().length < 10
+                }
+                onClick={uploadEvidence}
+                className="mt-3 rounded-xl bg-cyan-400 px-4 py-3 text-sm font-semibold text-slate-950 disabled:opacity-40"
+              >
+                {uploadingEvidence ? "Uploading..." : "Sign & Upload to IPFS"}
+              </button>
+            </div>
+
             <label className="mt-5 block text-sm">
               <span className="mb-2 block text-slate-300">
-                Evidence description
+                IPFS Evidence CID
               </span>
-              <textarea
-                value={evidence}
-                onChange={(e) => setEvidence(e.target.value)}
-                placeholder="Describe the delivered milestone..."
-                rows={3}
+              <input
+                value={evidenceCid}
+                onChange={(e) => setEvidenceCid(e.target.value)}
+                placeholder="Paste the CID of your uploaded evidence..."
                 className="w-full rounded-xl border border-white/10 bg-[#080d19] p-3 outline-none focus:border-cyan-400"
               />
+              <span className="mt-2 block text-xs text-slate-400">
+                The evidence document must match this trade and milestone.
+              </span>
             </label>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <button
-                disabled={!canSubmit || writing || !evidence.trim()}
-                onClick={() =>
-                  contractAction(
-                    "Submit Evidence",
-                    "submitMilestone",
-                    [
-                      parsedTradeId,
-                      keccak256(stringToHex(evidence.trim())),
-                    ]
-                  )
-                }
+                disabled={!canSubmit || writing || !evidenceCid.trim()}
+                onClick={async () => {
+                  try {
+                    setMessage("Validating IPFS evidence...");
+                    const hash = await verifyIpfsEvidence(
+                      evidenceCid,
+                      tradeId,
+                      currentMilestone.toString()
+                    );
+                    await contractAction(
+                      "Submit IPFS Evidence",
+                      "submitMilestone",
+                      [parsedTradeId, hash]
+                    );
+                  } catch (error) {
+                    setMessage(
+                      error instanceof Error
+                        ? error.message
+                        : "Evidence validation failed"
+                    );
+                  }
+                }}
                 className="rounded-xl border border-white/20 p-3 text-sm font-semibold hover:border-cyan-400 disabled:opacity-40"
               >
                 Submit Evidence
@@ -716,6 +942,8 @@ export default function Home() {
                 >
                   Resolve Dispute
                 </button>
+              </div>
+            )}
               </div>
             )}
           </section>
