@@ -511,7 +511,13 @@ export default function Home() {
         <header className="mb-10 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-6">
           <div>
             <div className="mb-2 flex items-center gap-2 text-cyan-400">
-              <ShieldCheck size={24} />
+              <img
+                src="/icon.svg"
+                alt="Mezo TradeOS logo"
+                width={32}
+                height={32}
+                className="h-8 w-8"
+              />
               <span className="text-sm font-semibold tracking-[0.3em]">
                 MEZO TRADEOS
               </span>
