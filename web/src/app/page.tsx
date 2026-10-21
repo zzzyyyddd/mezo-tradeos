@@ -671,7 +671,7 @@ export default function Home() {
                 Refund Expired
               </button>
             </div>
-            {tradeStatus === 4 && (
+            {tradeStatus === 2 && canResolve && (
               <div className="mt-5 rounded-xl border border-amber-500/30 p-4">
                 <h3 className="font-semibold text-amber-300">
                   Dispute Resolution
