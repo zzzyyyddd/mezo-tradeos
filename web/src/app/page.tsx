@@ -1011,7 +1011,7 @@ export default function Home() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-2 hover:text-cyan-300"
           >
-            Verified on-chain deployment
+            View deployed contract on Mezo Testnet
             <ExternalLink size={13} />
           </a>
         </footer>
